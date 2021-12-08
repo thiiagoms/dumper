@@ -1,0 +1,101 @@
+#!/usr/bin/env php
+<?php
+
+// declare(strict_types=1);
+
+if (php_sapi_name() !== 'cli') {
+    echo "[*] Only in cli mode";
+    exit;
+}
+
+use Src\Utils\Printer;
+use Src\Database\Database;
+
+require_once __DIR__ . '/vendor/autoload.php';
+
+$printer = new Printer();
+$database = (new Database())->conection();
+
+$tablesName = [];
+
+$printer->display("\e[32m
+
+██████╗░██╗░░░██╗███╗░░░███╗██████╗░███████╗██████╗░
+██╔══██╗██║░░░██║████╗░████║██╔══██╗██╔════╝██╔══██╗
+██║░░██║██║░░░██║██╔████╔██║██████╔╝█████╗░░██████╔╝
+██║░░██║██║░░░██║██║╚██╔╝██║██╔═══╝░██╔══╝░░██╔══██╗
+██████╔╝╚██████╔╝██║░╚═╝░██║██║░░░░░███████╗██║░░██║
+╚═════╝░░╚═════╝░╚═╝░░░░░╚═╝╚═╝░░░░░╚══════╝╚═╝░░╚═╝\e[0m
+
+    [*] Author: Thiago AKA thiiagoms
+    [*] Description: Backup MySQL tables
+    [*] Version: 1.0
+    
+    $ ./dumper
+");
+
+$queryString = "SHOW TABLES;";
+$stmt = $database->prepare($queryString);
+$stmt->execute();
+$tables = $stmt->fetch();
+
+foreach ($tables as $table) array_push($tablesName, $table);
+
+$file = fopen('database.sql', 'a+');
+
+foreach ($tablesName as $table) {
+    $createQuery = "SHOW CREATE TABLE {$table};";
+    $createTable = $database->prepare($createQuery);
+    $createTable->execute();
+    $createQueries = $createTable->fetch();
+
+    fwrite($file, "{$createQueries['Create Table']};");
+
+    $queryString = "SELECT * FROM {$table};";
+    $stmt = $database->prepare($queryString);
+    $stmt->execute();
+
+    fwrite($file, PHP_EOL);
+
+    $selectQuery = $stmt->fetch();
+
+    $insertQuery = insert($selectQuery, $table);
+
+    fwrite($file, $insertQuery);
+}
+
+fclose($file);
+
+function insert(array $data, string $table): string 
+{
+    $queryString = "INSERT INTO `{$table}` (";
+    $count = 0;
+
+    $fields = array_keys($data);
+    $values = array_values($data);
+
+    foreach ($fields as $field) {
+        
+        if ($count > 0) {
+            $queryString .= ", ";
+        }
+
+        $count++;
+        $queryString .= "`{$field}`";
+    }
+
+    $queryString .= ") VALUES (";
+    $count = 0;
+
+    foreach ($values as $value) {
+        if ($count > 0) {
+            $queryString .= ", ";
+        }
+        $count++;
+        $queryString .= "'{$value}'"; 
+    }
+
+    $queryString .= ");";
+    return $queryString;
+}
+
